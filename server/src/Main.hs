@@ -32,7 +32,9 @@ app sHandler = serve api $ server sHandler
 port :: Int
 port = 3001
 
-corsPolicy = const (Just (simpleCorsResourcePolicy { corsOrigins = Just (["http://localhost:8000", "http://siphon.local:8000"], True)}))
+corsPolicy = const (Just (simpleCorsResourcePolicy { corsOrigins = Just ([ "http://localhost:8000"
+                                                                         , "http://siphon.local:8000"
+                                                                         , "http://karls.github.io"], True)}))
 
 main :: IO ()
 main = do
