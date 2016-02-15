@@ -4,15 +4,42 @@ import Html exposing (Html)
 import Html.Attributes exposing (style)
 import Svg exposing (Svg)
 import Svg.Attributes exposing (cx, cy, r, fill, opacity)
-import Signal exposing (Signal, Address)
+import Signal exposing (Signal, Address, Mailbox)
 import Effects exposing (Effects, Never)
 import Color exposing (Color)
 import Color.Convert exposing (colorToHex)
+import Json.Encode exposing (int, object, encode)
+import Json.Decode exposing (tuple3, (:=), decodeString)
 import Time exposing (Time)
+import Debug exposing (log)
+import Task exposing (Task)
 import Random
-import Task
 import Mouse
+import SocketIO as SIO
 import StartApp
+
+
+mailbox : Mailbox (Int, Int, Int)
+mailbox = Signal.mailbox (0, 0, 0)
+
+type alias BubblePos
+  = { t : Int
+    , x : Int
+    , y : Int
+    }
+
+mkBubblePos : (Int, Int, Int) -> BubblePos
+mkBubblePos (t, x, y) = { t = t, x = x, y = y}
+
+port newBubble : Signal BubblePos
+port newBubble =
+  Signal.map mkBubblePos mailbox.signal
+
+
+port newIncomingBubble : Signal BubblePos
+
+incomingBubbles : Signal Action
+incomingBubbles = Signal.map Incoming newIncomingBubble
 
 
 type alias Bubble
@@ -24,7 +51,7 @@ type alias Bubble
     }
 
 
-initBubble : Time -> Int -> Int -> Bubble
+initBubble : Int -> Int -> Int -> Bubble
 initBubble t x y
   = { x = x
     , y = y
@@ -34,14 +61,21 @@ initBubble t x y
     }
 
 
-generateColor : Time -> Color
+generateColor : Int -> Color
 generateColor t =
   let intGenerator = Random.int 0 255
-      seed = Random.initialSeed (truncate t)
+      seed = Random.initialSeed t
       (r, s) = Random.generate intGenerator seed
       (g, s') = Random.generate intGenerator s
       (b, _) = Random.generate intGenerator s'
   in Color.rgb r b g
+
+
+parseBubblePosition : String -> Result String (Int, Int, Int)
+parseBubblePosition s =
+  let decoder = tuple3 (,,) Json.Decode.int Json.Decode.int Json.Decode.int
+  in decodeString decoder s
+
 
 type alias Model = List Bubble
 
@@ -49,6 +83,8 @@ type alias Model = List Bubble
 type Action
   = Click (Time, (Int, Int))
   | Tick Time
+  | MsgEmitted ()
+  | Incoming BubblePos
 
 
 init : (Model, Effects a)
@@ -73,9 +109,18 @@ extant bubble =
 update : Action -> Model -> (Model, Effects Action)
 update action model =
   case action of
-    Click (t, (x, y)) -> ((initBubble t x y) :: model, Effects.none)
-    Tick _ -> let newModel = List.filter extant model
-              in (List.map expandBubble newModel, Effects.none)
+    Click (t, (x, y)) ->
+      let msg = Signal.send mailbox.address (truncate t, x, y)
+      in (model, msg |> Task.map MsgEmitted |> Effects.task)
+
+    Tick _ ->
+      let newModel = List.filter extant model
+      in (List.map expandBubble newModel, Effects.none)
+
+    MsgEmitted _ ->
+      (model, Effects.none)
+
+    Incoming {t,x,y} -> ((initBubble t x y) :: model, Effects.none)
 
 
 -- drawBubble : Bubble -> Svg
@@ -118,18 +163,17 @@ driver =
           (Signal.map Tick ticking)
 
 
-
 app =
   StartApp.start { init = init
                  , update = update
                  , view = view
-                 , inputs = [driver] }
+                 , inputs = [driver, incomingBubbles] }
 
 
 main =
   app.html
 
 
-port tasks : Signal (Task.Task Never ())
+port tasks : Signal (Task Never ())
 port tasks =
   app.tasks
