@@ -1,12 +1,17 @@
 <html>
   <head>
+    <style>
+      body { padding: 0; margin: 0; }
+      body h1 { position: absolute; top: 10px; left: 10px; padding: 0; margin: 0; }
+    </style>
   </head>
-  <body id="body">
+  <body>
+    <h1>Click around</h1>
   </body>
   <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
   <script src="./main.js"></script>
   <script>
-    var socket = io('http://blog.sutt.ee:3001');
+    var socket = io('http://bubbles.sutt.ee');
     var app = Elm.fullscreen(Elm.Main, {newIncomingBubble: {t: 0, x: 0, y: 0}});
 
     function newBubble(bubble) {
